@@ -20,6 +20,11 @@ type UserRepository interface {
 	GetUserByLogin(ctx context.Context, login string) (*entity.User, error)
 	CreateUser(ctx context.Context, user *entity.User) (*entity.User, error)
 	GetUserByUUID(ctx context.Context, userUUID uuid.UUID) (*entity.User, error)
+
+	// Transaction support
+	BeginTx(ctx context.Context) (context.Context, error)
+	CommitTx(ctx context.Context) error
+	RollbackTx(ctx context.Context) error
 }
 
 //go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=BalanceCreator
@@ -47,34 +52,52 @@ func NewUserService(repository UserRepository, balanceService BalanceCreator, lo
 
 // Register register a new user.
 func (s *UserService) Register(ctx context.Context, login, password string) (string, error) {
-	const op = "domain.services.UserService.Registration"
-	log := s.logger.With(
-		s.logger.StringField("op", op),
-		s.logger.StringField("request_id", contexter.GetRequestID(ctx)),
-	)
+	// Начинаем транзакцию
+	txCtx, err := s.repository.BeginTx(ctx)
+	if err != nil {
+		return "", err
+	}
 
+	// Генерация хеша пароля
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Error("Did not generate password hash", log.ErrorField(err))
+		err := s.repository.RollbackTx(txCtx)
+		if err != nil {
+			return "", err
+		}
 		return "", err
 	}
 
+	// Создание пользователя
 	user := entity.NewUser(login, string(passwordHash), "", uuid.Nil)
+	user, err = s.repository.CreateUser(txCtx, user)
+	if err != nil {
+		err := s.repository.RollbackTx(txCtx)
+		if err != nil {
+			return "", err
+		}
+		return "", err
+	}
 
-	user, err = s.repository.CreateUser(ctx, user)
+	// Создание баланса для пользователя
+	err = s.balanceService.CreateBalanceForUser(txCtx, user.UUID)
+	if err != nil {
+		err := s.repository.RollbackTx(txCtx)
+		if err != nil {
+			return "", err
+		}
+		return "", err
+	}
+
+	// Коммит транзакции
+	err = s.repository.CommitTx(txCtx)
 	if err != nil {
 		return "", err
 	}
 
-	err = s.balanceService.CreateBalanceForUser(ctx, user.UUID)
-	if err != nil {
-		return "", err
-	}
-	log.Info("User balance created")
-
+	// Создание JWT
 	jwtString, err := tool.CreateJWT(user.UUID, s.secretKey)
 	if err != nil {
-		log.Error("Failed to create JWT", log.ErrorField(err))
 		return "", err
 	}
 

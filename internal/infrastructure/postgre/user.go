@@ -115,3 +115,75 @@ func (r *UserRepository) GetUserByUUID(ctx context.Context, userUUID uuid.UUID) 
 	}
 	return &user, nil
 }
+
+// Определяем ключ для хранения транзакции в контексте
+type txKeyType struct{}
+
+var txKey = txKeyType{}
+
+// BeginTx начинается транзакция и сохраняет её в контексте.
+func (r *UserRepository) BeginTx(ctx context.Context) (context.Context, error) {
+	const op = "infrastructure.postgre.UserRepository.BeginTx"
+
+	log := r.log.With(
+		r.log.StringField("op", op),
+		r.log.StringField("request_id", contexter.GetRequestID(ctx)),
+	)
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		log.Error("Failed to begin transaction", log.ErrorField(err))
+		return ctx, fmt.Errorf("%s: %w", op, err)
+	}
+
+	// Сохраняем транзакцию в контексте
+	return context.WithValue(ctx, txKey, tx), nil
+}
+
+// CommitTx коммитит транзакцию, если она существует в контексте.
+func (r *UserRepository) CommitTx(ctx context.Context) error {
+	const op = "infrastructure.postgre.UserRepository.CommitTx"
+
+	log := r.log.With(
+		r.log.StringField("op", op),
+		r.log.StringField("request_id", contexter.GetRequestID(ctx)),
+	)
+
+	tx, ok := ctx.Value(txKey).(pgx.Tx)
+	if !ok {
+		log.Error("No transaction found in context")
+		return errors.New("transaction not found in context")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		log.Error("Failed to commit transaction", log.ErrorField(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("Transaction committed successfully")
+	return nil
+}
+
+// RollbackTx откатывает транзакцию в случае ошибки.
+func (r *UserRepository) RollbackTx(ctx context.Context) error {
+	const op = "infrastructure.postgre.UserRepository.RollbackTx"
+
+	log := r.log.With(
+		r.log.StringField("op", op),
+		r.log.StringField("request_id", contexter.GetRequestID(ctx)),
+	)
+
+	tx, ok := ctx.Value(txKey).(pgx.Tx)
+	if !ok {
+		log.Error("No transaction found in context")
+		return errors.New("transaction not found in context")
+	}
+
+	if err := tx.Rollback(ctx); err != nil && err != pgx.ErrTxClosed {
+		log.Error("Failed to rollback transaction", log.ErrorField(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("Transaction rolled back successfully")
+	return nil
+}
