@@ -20,7 +20,7 @@ type OrderRepository interface {
 }
 
 type OrderClient interface {
-	Check(ctx context.Context, number int) (entity.Order, error)
+	Check(ctx context.Context, number int) (entity.Order, string, error)
 }
 
 // OrderService is a service for managing orders.
@@ -89,10 +89,14 @@ func (s *OrderService) Check(ctx context.Context, order entity.Order) (float64, 
 			log.Info("Context is done")
 			return 0, ctx.Err()
 		default:
-			externalOrder, err := s.client.Check(ctx, order.Number)
+			externalOrder, respTimeOut, err := s.client.Check(ctx, order.Number)
 			if err != nil {
 				if errors.Is(err, entity.ErrExternalOrderRateLimitExceeded) {
-					time.Sleep(61 * time.Second)
+					duration, err := time.ParseDuration(respTimeOut)
+					if err != nil {
+						return 0, err
+					}
+					time.Sleep(duration * time.Second)
 					continue
 				}
 				if errors.Is(err, entity.ErrExternalOrderNotRegistered) {
