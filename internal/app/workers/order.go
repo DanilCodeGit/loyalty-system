@@ -52,6 +52,18 @@ func (w *OrderWorker) Run() {
 	w.orderService = service.NewOrderService(w.logger, w.orderQueue, orderRepository)
 	w.orderService.SetClient(client)
 
+	// Загружаем необработанные заказы из базы данных
+	unprocessedOrders, err := w.orderService.GetUnprocessedOrders()
+	if err != nil {
+		log.Info("unprocessed orders not found", log.ErrorField(err))
+		//return
+	}
+
+	// Помещаем их в очередь для обработки
+	for _, order := range unprocessedOrders {
+		w.orderQueue <- order
+	}
+
 	for i := 1; i <= 3; i++ {
 		go w.worker()
 	}
@@ -65,13 +77,14 @@ func (w *OrderWorker) worker() {
 	for {
 		select {
 		case <-w.ctx.Done():
+			w.saveUnprocessedOrders()
 			return
 		case order, ok := <-w.orderQueue:
 			if !ok {
 				w.errorChan <- fmt.Errorf("order queue is closed")
 				return
 			}
-			//TODO что-то получше сделать
+
 			reqID := "req_order" + fmt.Sprintf("%d", order.Number)
 			ctx := context.WithValue(w.ctx, contexter.RequestID, reqID)
 
@@ -89,6 +102,24 @@ func (w *OrderWorker) worker() {
 			if bonuses > 0 {
 				w.balanceQueue <- entity.NewBalanceOperation(order.UserUUID, bonuses, 0, order.Number)
 			}
+		}
+	}
+}
+
+// saveUnprocessedOrders сохраняет необработанные заказы в базу данных
+func (w *OrderWorker) saveUnprocessedOrders() {
+	for {
+		select {
+		case order := <-w.orderQueue:
+			// Сохраняем заказ в базу данных как необработанный
+			err := w.orderService.SaveUnprocessedOrder(order)
+			if err != nil {
+				w.logger.Error("Failed to save unprocessed order", w.logger.ErrorField(err))
+				continue
+			}
+		default:
+			// Если нет больше заказов в очереди, выходим
+			return
 		}
 	}
 }

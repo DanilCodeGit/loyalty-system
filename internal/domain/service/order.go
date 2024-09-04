@@ -17,6 +17,8 @@ type OrderRepository interface {
 	AddOrderForUser(ctx context.Context, order entity.Order) error
 	GetAllUserOrders(ctx context.Context, userUUID uuid.UUID) ([]entity.Order, error)
 	UpdateOrderForUser(ctx context.Context, order entity.Order) error
+	SaveUnprocessedOrder(ctx context.Context, order entity.Order) error
+	GetUnprocessedOrders(ctx context.Context) ([]entity.Order, error)
 }
 
 type OrderClient interface {
@@ -164,4 +166,16 @@ func (s *OrderService) Update(ctx context.Context, order entity.Order) error {
 	}
 	log.Info("Order updated")
 	return nil
+}
+
+// Сохранение необработанного заказа в базу данных
+func (s *OrderService) SaveUnprocessedOrder(order entity.Order) error {
+	// Реализуйте логику для сохранения заказа в базу данных
+	return s.repository.SaveUnprocessedOrder(context.Background(), order)
+}
+
+// Получение всех необработанных заказов из базы данных
+func (s *OrderService) GetUnprocessedOrders() ([]entity.Order, error) {
+	// Реализуйте логику для получения необработанных заказов из базы данных
+	return s.repository.GetUnprocessedOrders(context.Background())
 }

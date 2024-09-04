@@ -144,3 +144,67 @@ func (r *OrderRepository) UpdateOrderForUser(ctx context.Context, order entity.O
 	}
 	return nil
 }
+
+// SaveUnprocessedOrder сохраняет необработанный заказ в базе данных
+func (r *OrderRepository) SaveUnprocessedOrder(ctx context.Context, order entity.Order) error {
+	const op = "infrastructure.postgre.OrderRepository.SaveUnprocessedOrder"
+	log := r.log.With(r.log.StringField("op", op),
+		r.log.StringField("request_id", contexter.GetRequestID(ctx)),
+		r.log.AnyField("order_number", order.Number),
+		r.log.AnyField("user_uuid", order.UserUUID),
+	)
+
+	_, err := r.db.Exec(ctx, `INSERT INTO orders (
+                    user_uuid,
+                    number,
+                    status,
+                    uploaded_at,
+                    accrual
+                    ) VALUES ($1, $2, $3, $4, 0)
+                    ON CONFLICT (number) DO NOTHING`, order.UserUUID, order.Number, order.Status, order.UploadedAt)
+	if err != nil {
+		log.Error("Failed to save unprocessed order", log.ErrorField(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	log.Info("Unprocessed order saved", log.AnyField("order_number", order.Number))
+	return nil
+}
+
+func (r *OrderRepository) GetUnprocessedOrders(ctx context.Context) ([]entity.Order, error) {
+	const op = "infrastructure.postgre.OrderRepository.GetUnprocessedOrders"
+
+	log := r.log.With(r.log.StringField("op", op))
+
+	rows, _ := r.db.Query(ctx, `SELECT 
+    				user_uuid,
+                    number,
+                    status,
+                    uploaded_at,
+                    accrual 
+                FROM orders 
+                WHERE status = 'unprocessed'`)
+	defer rows.Close()
+
+	orders, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (entity.Order, error) {
+		var order entity.Order
+		err := row.Scan(&order.UserUUID, &order.Number, &order.Status, &order.UploadedAt, &order.Accrual)
+		if err != nil {
+			log.Error("Failed to scan row", log.ErrorField(err))
+			return entity.Order{}, fmt.Errorf("%s: %w", op, err)
+		}
+		return order, nil
+	})
+
+	if err != nil {
+		log.Error("Failed to get unprocessed orders", log.ErrorField(err))
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if len(orders) == 0 {
+		log.Info("No unprocessed orders found")
+		return nil, entity.ErrOrderNotFound
+	}
+
+	log.Info("Unprocessed orders loaded", log.AnyField("order_count", len(orders)))
+	return orders, nil
+}
