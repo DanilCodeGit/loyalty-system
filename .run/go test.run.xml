@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="go test" type="GoTestRunConfiguration" factoryName="Go Test" singleton="false">
+    <module name="gophermart" />
+    <working_directory value="$PROJECT_DIR$/" />
+    <parameters value="./... -v" />
+    <root_directory value="$PROJECT_DIR$" />
+    <kind value="DIRECTORY" />
+    <package value="loyalty" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$" />
+    <framework value="gotest" />
+    <method v="2" />
+  </configuration>
+</component>
