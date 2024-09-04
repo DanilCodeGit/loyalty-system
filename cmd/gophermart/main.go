@@ -38,8 +38,12 @@ func main() {
 
 	// Создание каналов для обработки заказов и операций с балансом
 	log.Info("Create order queue channel...")
-	orderQueue := make(chan entity.Order, 100)
+	orderQueue := make(chan entity.Order, 100) // Канал для сервера
 	defer close(orderQueue)
+
+	log.Info("Create retryable order queue channel...")
+	retryableOrderQueue := make(chan workers.RetryableOrder, 100) // Канал для воркеров
+	defer close(retryableOrderQueue)
 
 	log.Info("Create balance queue channel...")
 	balanceQueue := make(chan entity.BalanceOperation, 100)
@@ -59,19 +63,29 @@ func main() {
 
 	// Создание и запуск HTTP-сервера
 	log.Info("Creating HTTP server...")
-	srv, err := server.New(mainCtx, conf, log, orderQueue, db)
+	srv, err := server.New(mainCtx, conf, log, orderQueue, db) // Передаем orderQueue
 	if err != nil {
 		log.Error("Failed to create HTTP server", log.ErrorField(err))
 		os.Exit(1)
 	}
 	srv.Run() // Запуск сервера
 
+	// Горутин для перемещения заказов из orderQueue в retryableOrderQueue
+	go func() {
+		for order := range orderQueue {
+			retryableOrderQueue <- workers.RetryableOrder{
+				Order:   order,
+				Retries: 0,
+			}
+		}
+	}()
+
 	// Создание WaitGroup для воркеров
 	var wg sync.WaitGroup
 
 	// Запуск воркера обработки заказов
 	log.Info("Starting order worker...")
-	orderWorker := workers.NewOrderWorker(mainCtx, log, orderQueue, errorChan, balanceQueue, db, conf.AccrualAdr)
+	orderWorker := workers.NewOrderWorker(mainCtx, log, retryableOrderQueue, errorChan, balanceQueue, db, conf.AccrualAdr)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
