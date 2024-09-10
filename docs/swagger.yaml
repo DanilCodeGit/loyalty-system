@@ -1,0 +1,329 @@
+basePath: /api
+definitions:
+  balance.Response:
+    properties:
+      current:
+        example: 500.5
+        type: number
+      withdrawn:
+        example: 42
+        type: number
+    type: object
+  login.Request:
+    properties:
+      login:
+        example: test@test.com
+        type: string
+      password:
+        example: test_Password
+        type: string
+    required:
+    - login
+    - password
+    type: object
+  orders.Response:
+    properties:
+      accrual:
+        example: 500
+        type: number
+      number:
+        example: "123124551"
+        type: string
+      status:
+        enum:
+        - NEW
+        - PROCESSING
+        - INVALID
+        - PROCESSED
+        example: PROCESSING
+        type: string
+      uploaded_at:
+        example: "2020-12-10T15:15:45+03:00"
+        type: string
+    type: object
+  register.Request:
+    properties:
+      login:
+        example: test@test.com
+        type: string
+      password:
+        example: test_Password
+        type: string
+    required:
+    - login
+    - password
+    type: object
+  withdraw.Request:
+    properties:
+      order:
+        example: "12312455"
+        type: string
+      sum:
+        example: 100
+        type: number
+    required:
+    - order
+    - sum
+    type: object
+  withdrawals.Response:
+    properties:
+      order:
+        example: "12312455"
+        type: string
+      processed_at:
+        example: "2020-12-10T15:15:45+03:00"
+        type: string
+      sum:
+        example: 100
+        type: number
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: v.max
+    url: http://v.max.example
+  description: This is a Gophermart server.
+  title: Gophermart API
+  version: "1.0"
+paths:
+  /api/user/orders:
+    get:
+      consumes:
+      - text/plain
+      description: |-
+        Эндпоинт для получение списка загруженных номеров заказов и информации по ним
+        В заголовке Authorization необходимо передавать JWT токен.
+        Номера заказа в выдаче должны быть отсортированы по времени загрузки от самых старых к самым новым. Формат даты — RFC3339.
+        Доступные статусы обработки расчётов:
+        NEW — заказ загружен в систему, но не попал в обработку;
+        PROCESSING — вознаграждение за заказ рассчитывается;
+        INVALID — система расчёта вознаграждений отказала в расчёте;
+        PROCESSED — данные по заказу проверены и информация о расчёте успешно
+      parameters:
+      - description: JWT Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully fetched orders
+          schema:
+            items:
+              $ref: '#/definitions/orders.Response'
+            type: array
+        "204":
+          description: No content
+        "401":
+          description: User is not authorized
+        "500":
+          description: Internal server error
+      summary: Получение списка загруженных заказов
+      tags:
+      - Order
+    post:
+      consumes:
+      - text/plain
+      description: |-
+        Эндпоинт используется для добавления нового заказа для начисления средств.
+        В заголовке Authorization необходимо передавать JWT токен.
+      parameters:
+      - description: JWT Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Order Number
+        example: 123124551
+        in: body
+        name: Order
+        required: true
+        schema:
+          type: integer
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Order already added from current user
+        "202":
+          description: Order successfully added to process
+        "400":
+          description: Invalid request
+        "401":
+          description: User is not authorized
+        "409":
+          description: Order already added from another user
+        "422":
+          description: Order number is not valid
+        "500":
+          description: Internal server error
+      summary: Добавление нового заказа для начисления средств
+      tags:
+      - Order
+  /api/user/withdrawals:
+    get:
+      consumes:
+      - text/plain
+      description: |-
+        Эндпоинт используется для получения списка операций снятия баланса пользователя
+        В заголовке Authorization необходимо передавать JWT токен.
+      parameters:
+      - description: JWT Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User balance successfully returned
+          schema:
+            items:
+              $ref: '#/definitions/withdrawals.Response'
+            type: array
+        "204":
+          description: No withdrawal operations found
+        "401":
+          description: User is not authorized
+        "500":
+          description: Internal server error
+      summary: Получение списка операций снятия баланса.
+      tags:
+      - Balance
+  /user/balance:
+    get:
+      consumes:
+      - text/plain
+      description: |-
+        Эндпоинт используется для получения текущего балaнаса пользователя.
+        В заголовке Authorization необходимо передавать JWT токен.
+      parameters:
+      - description: JWT Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User balance successfully returned
+          schema:
+            $ref: '#/definitions/balance.Response'
+        "401":
+          description: User is not authorized
+        "500":
+          description: Internal server error
+      summary: Получение баланса пользователя.
+      tags:
+      - Balance
+  /user/balance/withdraw:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Эндпоинт используется для снятия средств с баланса пользователя в пользу заказа
+        В заголовке Authorization необходимо передавать JWT токен.
+      parameters:
+      - description: JWT Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Withdraw Request
+        in: body
+        name: Request
+        required: true
+        schema:
+          $ref: '#/definitions/withdraw.Request'
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Withdrawal request successfully sent
+        "400":
+          description: Invalid request
+        "401":
+          description: User is not authorized
+        "402":
+          description: Balance is insufficient
+        "422":
+          description: Order number is not valid
+        "500":
+          description: Internal server error
+      security:
+      - ApiKeyAuth: []
+      summary: Cнятие средств с баланса пользователя в пользу заказа
+      tags:
+      - Balance
+  /user/login:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Эндпоинт используется для аутентификации пользователя.
+        Логин приводится к нижнему регистру на стороне сервера
+        В заголовке Authorization возвращается JWT токен для авторизации
+      parameters:
+      - description: Login Request
+        in: body
+        name: Request
+        required: true
+        schema:
+          $ref: '#/definitions/login.Request'
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: User successfully authenticated
+          headers:
+            Authorization:
+              description: JWT Token
+              type: string
+        "400":
+          description: Bad request
+        "401":
+          description: Login or password is wrong
+        "500":
+          description: Internal server error
+      summary: Аутентификация пользователя.
+      tags:
+      - User
+  /user/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Эндпоинт используется для регистрации нового пользователя.
+        Логин приводится к нижнему регистру на стороне сервера
+        В заголовке Authorization возвращается JWT токен авторизации
+      parameters:
+      - description: Register Request
+        in: body
+        name: Request
+        required: true
+        schema:
+          $ref: '#/definitions/register.Request'
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: User registered successfully
+          headers:
+            Authorization:
+              description: JWT Token
+              type: string
+        "400":
+          description: Bad request
+        "409":
+          description: User already exists
+        "500":
+          description: Internal server error
+      summary: Регистрация нового пользователя.
+      tags:
+      - User
+swagger: "2.0"

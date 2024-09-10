@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="go run" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="gophermart" />
+    <working_directory value="$PROJECT_DIR$" />
+    <parameters value="-r=http://localhost:8080 -a=localhost:8081" />
+    <kind value="PACKAGE" />
+    <package value="loyalty/cmd/gophermart" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$/cmd/gophermart/main.go" />
+    <method v="2" />
+  </configuration>
+</component>
